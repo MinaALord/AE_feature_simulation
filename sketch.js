@@ -1,5 +1,4 @@
-// sketch.js – AE Feature Selection + Latent Space Drop Simulation
-
+// sketch.js – AE Feature Selection + Latent Space Drop Simulation (Scenes 1–6)
 let points = [];
 let colors = [];
 let numPoints = 45;
@@ -13,37 +12,474 @@ let latentPoints = [];
 let state = "select";
 let fontLoaded = false;
 let camZoom = 500;
+let nextButton;
+let dragPoints = [];
+let staticLatents = [];
+let fillerLatents = [];
+let sample110 = null;
+let showZArrow = false;
+let encodeBtn, decodeBtn, sphereBtn;
+let sample110Encoded = false;
+let showSpheres = false;
+let sample110Sphere = false;
+let condenseBtn;
+let condensed = false;
+let sample110VisibleInScene5 = false;
+let epsilonXSlider, epsilonYSlider, epsilonZSlider;
+let epsilonX = 1, epsilonY = 1, epsilonZ = 1;
+let sigma = 30; // Scaling factor for ε
+let decodeBtn6;
+let z6Visible = false;
+let cam;
+let overSlider = false;
+let epsilonDebugFrame = 0;
+let canvasWrapper;
+let hud; // Offscreen 2D graphics for HUD layer 
+let zoomTarget = 300;
+let zoomSpeed = 0.05;
+let hudLayer;
+let zoomedOnce = false;
 
 function preload() {
   fontLoaded = loadFont("https://cdnjs.cloudflare.com/ajax/libs/topcoat/0.8.0/font/SourceCodePro-Regular.otf");
 }
 
+function isMouseOverSlider(slider) {
+  const r = slider.elt.getBoundingClientRect();
+  return mouseX >= r.left && mouseX <= r.right &&
+         mouseY >= r.top && mouseY <= r.bottom;
+}
+
 function setup() {
-  createCanvas(canvasWidth, canvasHeight, WEBGL);
+  let cnv = createCanvas(canvasWidth, canvasHeight, WEBGL);
+  canvasWrapper = createDiv();
+  canvasWrapper.style("position", "relative");
+  cnv.parent(canvasWrapper);
+  canvasWrapper.parent(document.body);
+
+  hudLayer = createGraphics(canvasWidth, canvasHeight); // 2D HUD layer
+  hudLayer.pixelDensity(1);
+
   colorMode(HSB);
   textFont(fontLoaded);
   generateReducedWavePoints();
+  createUI();
+  cam = createCamera();
+  prepareStaticLatents();
+  prepareFillerLatents();
+
+  [epsilonXSlider, epsilonYSlider, epsilonZSlider, decodeBtn6, encodeBtn6].forEach(ctrl => {
+    if (ctrl) ctrl.parent(canvasWrapper);
+  });
 }
 
 function draw() {
   background(255);
-
+  const sliderLength = 100;
+  const circleRight = width - 30;
+  const sliderX = circleRight - sliderLength;
+  const hudTopY = 130;
+  const lineSpacing = 30;
   if (state === "select") {
     ortho(-width / 2, width / 2, -height / 2, height / 2, -1000, 1000);
     drawAxis2D();
     drawInterpolatedWaveform();
     drawPoints();
     drawSelectedCount();
+    nextButton.html("Encodieren (AE)");
+    nextButton.position(width - 160, height - 40);
+    encodeBtn4.hide(); encodeBtn6.hide();
+    decodeBtn.hide();
+    sphereBtn.hide();
+    condenseBtn.hide();
   } else if (state === "latent") {
-    background(255);
     orbitControl(1, 1, 0.1);
-
     push();
     rotateX(PI / 6);
     rotateY(-PI / 6);
     drawLatentSpace();
     drawLatentAxes();
     pop();
+    nextButton.html("Decodieren (AE)");
+    nextButton.position(width - 160, height - 40);
+    nextButton.show();
+    encodeBtn4.hide();
+    encodeBtn6.hide();
+    decodeBtn.hide();
+    sphereBtn.hide();
+    condenseBtn.hide();
+  } else if (state === "reconstruct") {
+    ortho(-width / 2, width / 2, -height / 2, height / 2);
+    background(255);
+    drawReconstructionScene();
+    nextButton.html("Latent Space (AE)");
+    nextButton.position(width - 160, height - 40);
+    nextButton.show();
+    encodeBtn4.hide();
+    encodeBtn6.hide();
+    decodeBtn.hide();
+    sphereBtn.hide();
+    condenseBtn.hide();
+  } else if (state === "latent-multi") {
+    background(255);
+    orbitControl();
+    push();
+    rotateX(PI / 6);
+    rotateY(-PI / 6);
+    drawLatentAxes();
+    drawFullLatentSpace();
+    if (sample110Encoded) drawSample110();
+    if (sample110Encoded && showZArrow) drawZArrow();
+    pop();    
+    const rightMargin = 30;
+    const rightX4 = width - rightMargin;
+
+    encodeBtn4.position(rightX4 - encodeBtn4.width, hudTopY);
+    decodeBtn.position(rightX4 - decodeBtn.width, hudTopY + lineSpacing);
+    nextButton.html("Latent Space Distribution (VAE)");
+    nextButton.position(width - nextButton.elt.offsetWidth - 30, height - 40);
+
+    encodeBtn4.show();
+    decodeBtn.show();
+    nextButton.show();
+
+    encodeBtn6.hide();
+    sphereBtn.hide();
+    condenseBtn.hide();
+  } else if (state === "vae-cloud") {
+    background(255);
+    orbitControl();
+    push();
+    rotateX(PI / 6);
+    rotateY(-PI / 6);
+    drawLatentAxes();
+    drawFullLatentSpace();
+
+    if (sample110VisibleInScene5) {
+      drawSample110();
+    }
+    
+    if (showSpheres) drawSpheres();
+
+    if (condensed) {
+      for (let p of staticLatents) {
+        if (dist(p.x, p.y, p.z, 0, 0, 0) > 50) {
+          p.x += (0 - p.x) * 0.08;
+          p.y += (0 - p.y) * 0.08;
+          p.z += (0 - p.z) * 0.08;
+        }
+      }
+    }
+
+    if (sample110VisibleInScene5 && sample110Sphere && showSpheres) {
+      drawSample110Sphere();
+    }
+    pop();
+    const rightMargin = 30;
+    const rightX5 = width - rightMargin;
+
+    sphereBtn.position(rightX5 - sphereBtn.width, hudTopY);
+    condenseBtn.position(rightX5 - condenseBtn.width, hudTopY + lineSpacing);
+    encodeBtn6.position(rightX5 - encodeBtn6.width, hudTopY + lineSpacing * 2);
+    decodeBtn6.position(rightX5 - decodeBtn6.width, height -40);
+
+    sphereBtn.show();
+    condenseBtn.show();
+    encodeBtn6.show();
+    decodeBtn6.show();
+
+    nextButton.hide();
+    decodeBtn.hide();
+    encodeBtn4.hide();
+  } else if (state === "zoom110") {
+    background(240);
+
+    // Custom close camera position FINGER WEG!!!!
+    cam.setPosition(-80, -180, 20);
+    cam.lookAt(0, 0, 0);
+    if (!overSlider && mouseIsPressed) orbitControl();
+    //orbitControl();
+
+    // ε sliders
+    epsilonX = epsilonXSlider.value();
+    epsilonY = epsilonYSlider.value();
+    epsilonZ = epsilonZSlider.value();
+    //console.log("[Z-Vector] ε: ", epsilonX, epsilonY, epsilonZ);
+
+    // μ = sample110 (unscaled space)
+    let mu = createVector(sample110.x, sample110.y, sample110.z);
+
+    // raw z = μ + σ * ε
+    let rawZ = createVector(
+      mu.x + sigma * epsilonX,
+      mu.y + sigma * epsilonY,
+      mu.z + sigma * epsilonZ
+    );
+
+    // Clamp to radius = 60 (unscaled!)
+    let dir = p5.Vector.sub(rawZ, mu);
+    let maxRadius = 60; // <--- NOT scaled here
+    if (dir.mag() > maxRadius) dir.setMag(maxRadius);
+
+    // final z in 3D space
+    let finalZ = p5.Vector.add(mu, dir);
+    let [zX, zY, zZ] = [finalZ.x, finalZ.y, finalZ.z];
+
+    push();
+    scale(2.3);
+    push();
+    rotateX(radians(0));     // ← Adjust for tilt up/down
+    rotateY(radians(-0.9));  // ← Adjust for left/right turn
+    drawLatentAxes();
+    drawFullLatentSpace();
+    
+    // 6. Draw it
+    if (z6Visible) {
+      stroke(0, 100, 100);
+      strokeWeight(3);
+      line(0, 0, 0, zX, zY, zZ);
+    }
+
+
+    drawSample110();
+    if (sample110Sphere && showSpheres) drawSample110Sphere();
+    if (showSpheres) drawSpheres();
+    pop(); // inner push (rotate)
+    pop(); // outer push (scale)
+
+    // ---- 2D HUD OVERLAY ----
+    hudLayer.clear();
+    hudLayer.textAlign(RIGHT, CENTER);
+    hudLayer.textSize(11);
+    hudLayer.fill(0);
+    const sliderLength = 100;
+    const circleRight = width - 45;
+    const sliderX = circleRight - sliderLength;
+    const hudTopY = 130;
+    const lineSpacing = 30;
+    hudLayer.text("epsilon₁", width - 45, hudTopY);
+    hudLayer.text("epsilon₂", width - 45, hudTopY + lineSpacing);
+    hudLayer.text("epsilon₃", width - 45, hudTopY + lineSpacing * 2);
+
+    resetMatrix();
+    camera();
+    noLights();
+    push();
+    translate(0, 0, 1);
+    texture(hudLayer);
+    plane(width, height);
+    pop();
+
+    // UI sliders and buttons
+    epsilonXSlider.position(sliderX, hudTopY + 5);
+    epsilonYSlider.position(sliderX, hudTopY + lineSpacing + 5);
+    epsilonZSlider.position(sliderX, hudTopY + lineSpacing * 2 + 5);
+    epsilonXSlider.style('width', sliderLength + 'px');
+    epsilonYSlider.style('width', sliderLength + 'px');
+    epsilonZSlider.style('width', sliderLength + 'px');
+    epsilonXSlider.show();
+    epsilonYSlider.show();
+    epsilonZSlider.show();
+
+    //decodeBtn6.position(160, height - 40);
+    decodeBtn6.hide();
+    encodeBtn6.hide();
+    condenseBtn.hide();
+    sphereBtn.hide();
+  }
+}
+
+function drawSample110() {
+  if (!sample110Encoded || !sample110) return;
+  push();
+  translate(sample110.x, sample110.y, sample110.z);
+  fill(sample110.col);
+  noStroke();
+  sphere(12);
+  pop();
+}
+
+function drawSample110Sphere() {
+  if (!sample110Encoded || !sample110) return;
+  push();
+  translate(sample110.x, sample110.y, sample110.z);
+  fill(hue(sample110.col), saturation(sample110.col), brightness(sample110.col), 0.15);
+  noStroke();
+  sphere(60);
+  pop();
+}
+
+function drawZArrow() {
+  if (sample110Encoded && sample110) {
+    stroke(0, 100, 100);
+    strokeWeight(2);
+    line(0, 0, 0, sample110.x, sample110.y, sample110.z);
+  }
+}
+
+function drawSpheres() {
+  for (let pt of staticLatents) {
+    push();
+    translate(pt.x, pt.y, pt.z);
+    fill(hue(pt.col), saturation(pt.col), brightness(pt.col), 0.15);
+    noStroke();
+    sphere(60);
+    pop();
+  }
+}
+
+function drawAxis2D() {
+  stroke(220);
+  line(-canvasWidth / 2 + margin, 0, canvasWidth / 2 - margin, 0);
+}
+
+
+function createUI() {
+  nextButton = createButton("Next Scene");
+  nextButton.mousePressed(() => {
+    if (state === "select") state = "latent";
+    else if (state === "latent") state = "reconstruct";
+    else if (state === "reconstruct") state = "latent-multi";
+    else if (state === "latent-multi") state = "vae-cloud";
+    else if (state === "vae-cloud") state = "epsilon";
+  });
+
+  encodeBtn4 = createButton("encoding x");
+  encodeBtn4.mousePressed(() => {
+    sample110 = {
+      x: map(3600, 3400, 3900, -200, 200),
+      y: map(247, 240, 255, -200, 200),
+      z: map(153, 130, 200, -200, 200),
+      col: color(0, 90, 90)
+    };
+    sample110Encoded = true;
+  });
+
+  encodeBtn6 = createButton("encode p(x)");
+  encodeBtn6.mousePressed(() => {
+    let rawX = map(3600, 3400, 3900, -200, 200);
+    let rawY = map(247, 240, 255, -200, 200);
+    let rawZ = map(153, 130, 200, -200, 200);
+    sample110 = { x: rawX * 0.9, y: rawY * 0.9, z: rawZ * 0.9, col: color(0, 90, 90) };
+    sample110Encoded = true;
+    sample110Sphere = true;
+    sample110VisibleInScene5 = true;
+  });
+
+  decodeBtn = createButton("Decode (z = x)");
+  decodeBtn.mousePressed(() => {
+    showZArrow = true;
+  });
+
+  sphereBtn = createButton("p(x) für Kontinuität");
+  sphereBtn.mousePressed(() => {
+    showSpheres = true;
+  });
+  
+  condenseBtn = createButton("Raum verdichten");
+  condenseBtn.mousePressed(() => {
+    condensed = true;
+    fillerLatents = [];
+  });
+  condenseBtn.hide();
+  
+  epsilonXSlider = createSlider(-2, 2, 1, 0.01);
+  epsilonYSlider = createSlider(-2, 2, 1, 0.01);
+  epsilonZSlider = createSlider(-2, 2, 1, 0.01);
+
+  epsilonXSlider.hide();
+  epsilonYSlider.hide();
+  epsilonZSlider.hide();
+  
+  decodeBtn6 = createButton("decode zₑ = p(x)");
+  decodeBtn6.mousePressed(() => {
+    console.log("[decodeBtn6] → switch to Scene 7");
+    z6Visible = true;
+    state = "zoom110";
+    epsilonXSlider.value(0);
+    epsilonYSlider.value(0);
+    epsilonZSlider.value(0);
+  });
+  decodeBtn6.hide();
+
+}
+
+function nextScene() {
+  if (state === "select") state = "latent";
+  else if (state === "latent") state = "reconstruct";
+  else if (state === "reconstruct") state = "latent-multi";
+  else if (state === "latent-multi") state = "vae-cloud";
+  else if (state === "vae-cloud") state = "epsilon";
+}
+
+function prepareStaticLatents() {
+  let rawData = [
+    { name: "sample127", freq: 3880, amp: 189.8, loud: 255 },
+    { name: "sample4", freq: 3800, amp: 165.8, loud: 245 },
+    { name: "sample11", freq: 3760, amp: 154.2, loud: 248 },
+    { name: "sample13", freq: 3420, amp: 138.9, loud: 240 },
+    { name: "sample26", freq: 3840, amp: 160.0, loud: 247 },
+    { name: "sample34", freq: 3785, amp: 178.1, loud: 243 },
+    { name: "sample86", freq: 3550, amp: 157.0, loud: 246 },
+    { name: "sample98", freq: 3685, amp: 155.7, loud: 244 },
+    { name: "sample117", freq: 3490, amp: 150.0, loud: 242 }
+  ];
+
+  staticLatents = rawData.map(d => {
+    let x = map(d.freq, 3400, 3900, -200, 200);
+    let y = map(d.loud, 240, 255, -200, 200);
+    let z = map(d.amp, 130, 200, -200, 200);
+    let hue = map(d.freq, 3400, 3900, 200, 60); // custom hue range: yellow to blue
+    let col = color(hue, 80, 80);
+    return { ...d, x, y, z, col };
+  });
+}
+
+function prepareFillerLatents() {
+  for (let base of staticLatents) {
+    for (let i = 0; i < 5; i++) {
+      let x = base.x + random(-60, 60);
+      let y = base.y + random(-60, 60);
+      let z = base.z + random(-60, 60);
+      let col = color(hue(base.col), saturation(base.col), brightness(base.col), 0.4);
+      fillerLatents.push({ x, y, z, col });
+    }
+  }
+}
+
+function drawFullLatentSpace() {
+  // Echte 9 Datenpunkte
+  for (let pt of staticLatents) {
+    push();
+    translate(pt.x, pt.y, pt.z);
+    fill(pt.col);
+    noStroke();
+    sphere(10);
+    pop();
+  }
+
+  // Nur zeigen, wenn nicht "verdichtet"
+  if (!condensed) {
+    for (let pt of fillerLatents) {
+      push();
+      translate(pt.x, pt.y, pt.z);
+      fill(pt.col);
+      noStroke();
+      sphere(3);
+      pop();
+    }
+  }
+    // Zeichne die Clusterpunkte nur wenn NICHT condensed
+  if (!condensed) {
+    for (let i = 0; i < fillerLatents.length; i++) {
+      let p = fillerLatents[i];
+      push();
+      translate(p.x, p.y, p.z);
+      fill(p.col);
+      noStroke();
+      sphere(3);
+      pop();
+    }
   }
 }
 
@@ -77,6 +513,33 @@ function drawInterpolatedWaveform() {
   endShape();
 }
 
+function drawReconstructionScene() {
+  if (dragPoints.length === 0) {
+    for (let i = 0; i < latentPoints.length; i++) {
+      dragPoints.push({
+        x: random(-300, 300),
+        y: random(-200, 200),
+        col: latentPoints[i].col,
+        fixed: false
+      });
+    }
+  }
+
+  for (let i = 0; i < dragPoints.length; i++) {
+    let p = dragPoints[i];
+    fill(p.col);
+    noStroke();
+    ellipse(p.x, p.y, 20);
+  }
+
+  stroke(180, 30, 80);
+  strokeWeight(2);
+  noFill();
+  beginShape();
+  for (let p of dragPoints) vertex(p.x, p.y);
+  endShape();
+}
+
 function drawPoints() {
   hoverIndex = -1;
   for (let i = 0; i < points.length; i++) {
@@ -102,11 +565,6 @@ function drawSelectedCount() {
   textAlign(LEFT, TOP);
   textSize(14);
   text(`Selected: ${selected.filter(v => v).length} / 16`, -canvasWidth / 2 + margin, -canvasHeight / 2 + 10);
-}
-
-function drawAxis2D() {
-  stroke(220);
-  line(-canvasWidth / 2 + margin, 0, canvasWidth / 2 - margin, 0);
 }
 
 function drawLatentSpace() {
@@ -189,8 +647,43 @@ function prepareLatentPoints() {
 }
 
 function mousePressed() {
-  handleClick(mouseX - width / 2, mouseY - height / 2);
+  if (state === "reconstruct") {
+    for (let p of dragPoints) {
+      if (dist(mouseX - width / 2, mouseY - height / 2, p.x, p.y) < 10) {
+        p.fixed = true;
+      }
+    }
+  } else if (state === "zoom110") {
+    // Check if mouse is over one of the epsilon sliders
+      overSlider =
+        isMouseOverSlider(epsilonXSlider) ||
+        isMouseOverSlider(epsilonYSlider) ||
+        isMouseOverSlider(epsilonZSlider);
+    } else {
+      handleClick(mouseX - width / 2, mouseY - height / 2);
+    }
 }
+
+function mouseDragged() {
+  if (state === "reconstruct") {
+    for (let p of dragPoints) {
+      if (p.fixed) {
+        p.x = mouseX - width / 2;
+        p.y = mouseY - height / 2;
+      }
+    }
+  }
+  // no changes here for sliders
+}
+
+function mouseReleased() {
+  if (state === "reconstruct") {
+    for (let p of dragPoints) p.fixed = false;
+  }
+  // Reset after any interaction
+  overSlider = false;
+}
+
 
 function touchStarted() {
   if (touches.length > 0) {
