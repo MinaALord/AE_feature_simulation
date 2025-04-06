@@ -112,7 +112,7 @@ function draw() {
     ortho(-width / 2, width / 2, -height / 2, height / 2);
     background(255);
     drawReconstructionScene();
-    nextButton.html("Latent Space (AE)");
+    nextButton.html("Latenter Raum (AE)");
     nextButton.position(width - 160, height - 40);
     nextButton.show();
     encodeBtn4.hide();
@@ -136,7 +136,7 @@ function draw() {
 
     encodeBtn4.position(rightX4 - encodeBtn4.width, hudTopY);
     decodeBtn.position(rightX4 - decodeBtn.width, hudTopY + lineSpacing);
-    nextButton.html("Latent Space Distribution (VAE)");
+    nextButton.html("Latenter Raum (VAE)");
     nextButton.position(width - nextButton.elt.offsetWidth - 30, height - 40);
 
     encodeBtn4.show();
@@ -344,7 +344,7 @@ function createUI() {
     else if (state === "vae-cloud") state = "epsilon";
   });
 
-  encodeBtn4 = createButton("encoding x");
+  encodeBtn4 = createButton("Encodiere x");
   encodeBtn4.mousePressed(() => {
     sample110 = {
       x: map(3600, 3400, 3900, -200, 200),
@@ -355,7 +355,7 @@ function createUI() {
     sample110Encoded = true;
   });
 
-  encodeBtn6 = createButton("encode p(x)");
+  encodeBtn6 = createButton("Encodieren q(x)");
   encodeBtn6.mousePressed(() => {
     let rawX = map(3600, 3400, 3900, -200, 200);
     let rawY = map(247, 240, 255, -200, 200);
@@ -366,7 +366,7 @@ function createUI() {
     sample110VisibleInScene5 = true;
   });
 
-  decodeBtn = createButton("Decode (z = x)");
+  decodeBtn = createButton("Decodieren z=x");
   decodeBtn.mousePressed(() => {
     showZArrow = true;
   });
@@ -391,7 +391,7 @@ function createUI() {
   epsilonYSlider.hide();
   epsilonZSlider.hide();
   
-  decodeBtn6 = createButton("decode zₑ = p(x)");
+  decodeBtn6 = createButton("Decodieren z=p(x)");
   decodeBtn6.mousePressed(() => {
     console.log("[decodeBtn6] → switch to Scene 7");
     z6Visible = true;
@@ -590,7 +590,7 @@ function drawLatentAxes() {
   textSize(12);
   textAlign(CENTER, CENTER);
   translate(210, 0, 0);
-  text("Freq", 0, 0);
+  text("Dim 1", 0, 0);
   pop();
 
   push();
@@ -598,7 +598,7 @@ function drawLatentAxes() {
   textSize(12);
   textAlign(CENTER, CENTER);
   translate(0, -210, 0);
-  text("Loud", 0, 0);
+  text("Dim 2", 0, 0);
   pop();
 
   push();
@@ -606,7 +606,7 @@ function drawLatentAxes() {
   textSize(12);
   textAlign(CENTER, CENTER);
   translate(0, 0, 210);
-  text("Amp", 0, 0);
+  text("Dim 3", 0, 0);
   pop();
 }
 
